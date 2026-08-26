@@ -1,0 +1,20 @@
+[project]
+name = "BL4-Super-Dash"
+version = "1.1.1"
+description = "One-key Super Dash for Borderlands 4 with keyboard, gamepad, and sprint preservation."
+authors = [
+    { name = "Sol (ChatGPT, GPT-5.6 Sol)" }
+]
+maintainers = [
+    { name = "Last1SiN" }
+]
+
+[project.urls]
+Repository = "https://github.com/Last1SiN/BL4-SuperDash"
+
+[tool.sdkmod]
+name = "BL4 Super Dash"
+version = "1.1.1"
+license = { name = "GPL3", url = "https://choosealicense.com/licenses/gpl-3.0/" }
+download = "https://github.com/Last1SiN/BL4-SuperDash/releases/latest/download/BL4_SuperDash.sdkmod"
+coop_support = "ClientSide"
