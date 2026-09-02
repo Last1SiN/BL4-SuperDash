@@ -1,7 +1,7 @@
 [project]
 name = "BL4-Super-Dash"
 version = "1.2.0"
-description = "Directional one-key Super Dash for Borderlands 4 with keyboard, analog gamepad direction, and sprint preservation."
+description = "Multy-directional one-key Super Dash for Borderlands 4 with keyboard, analog gamepad direction, and sprint preservation."
 authors = [
     { name = "Sol (ChatGPT, GPT-5.6 Sol)" }
 ]
