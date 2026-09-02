@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import math
 import time
 from typing import Any
 
+import unrealsdk
 from mods_base import (
     EInputEvent,
     MODS_DIR,
@@ -14,16 +16,17 @@ from mods_base import (
 )
 from unrealsdk.hooks import Type
 
+VERSION = "1.2.0"
 LOG = MODS_DIR / "BL4_SuperDash.log"
 
 IDLE = 0
-NEUTRALIZE_FORWARD = 1
+NEUTRALIZE_MOVE = 1
 WAIT_DASH_START = 2
 HOLD_JUMP = 3
 WAIT_RELEASE = 4
-FINAL_SNAPSHOT = 5
-WAIT_LANDING = 6
-VERIFY_SPRINT = 7
+WAIT_LANDING = 5
+VERIFY_SPRINT = 6
+FINISH = 7
 
 _phase = IDLE
 _c = None
@@ -35,16 +38,28 @@ _anim_hook = None
 _resume_sprint = False
 _saw_airborne = False
 _landing_deadline_ns = 0
+_neutral_frame_count = 0
 
 # (mapping WrappedStruct, original bShouldBeIgnored)
 _suppressed_mappings = []
 
-FORWARD_DIRECTION = 0
+# Captured direction for the active Super Dash.
+_desired_x = 0.0
+_desired_y = 0.0
+_native_direction = 0
+_dash_speed = 0.0
+
+# Native SetWantsToDash enum, verified in Borderlands 4:
+# 0 = Forward, 1 = Left, 2 = Back, 3 = Right.
+DIR_FORWARD = 0
+DIR_LEFT = 1
+DIR_BACK = 2
+DIR_RIGHT = 3
 
 
-def log(msg: str) -> None:
-    line = "[BL4 Super Dash v1.1.1] " + msg
-    print(line)
+def log_error(msg: str) -> None:
+    """Write exceptional/abort diagnostics to file without console output."""
+    line = "[BL4 Super Dash v1.2.0] " + msg
     try:
         with LOG.open("a", encoding="utf-8", errors="replace") as f:
             f.write(line + "\n")
@@ -86,10 +101,10 @@ neutral_frames = SliderOption(
     max_value=4,
     step=1,
     is_integer=True,
-    display_name="Forward Neutral Frames",
+    display_name="Movement Neutral Frames",
     description=(
-        "Frames for which the mod internally suppresses the current Forward mapping "
-        "before re-arming it. Default: 1."
+        "Frames for which the mod internally suppresses movement input before "
+        "re-arming the directional dash. Default: 1."
     ),
 )
 
@@ -123,40 +138,8 @@ dash_timeout_ms = SliderOption(
     step=10,
     is_integer=True,
     display_name="Dash Start Timeout (ms)",
-    description="Abort if dash does not start after Forward re-arm. Default: 300 ms.",
+    description="Abort if dash does not start after movement re-arm. Default: 300 ms.",
 )
-
-
-def _snapshot(c) -> str:
-    parts = []
-
-    try:
-        parts.append(f"velocity={c.GetVelocity()!r}")
-    except Exception:
-        pass
-
-    try:
-        parts.append(f"dashing={c.IsCharacterDashing()!r}")
-    except Exception:
-        pass
-
-    try:
-        m = c.CharacterMovement
-        parts.append(f"bWantsToDash={m.bWantsToDash!r}")
-        parts.append(f"LastDashTime={m.LastDashTime!r}")
-        parts.append(f"MovementMode={m.MovementMode!r}")
-        parts.append(f"bIsSprinting={m.bIsSprinting!r}")
-        parts.append(f"bWantsToSprint={m.bWantsToSprint!r}")
-        parts.append(f"bWantsToStartSprinting={m.bWantsToStartSprinting!r}")
-    except Exception:
-        pass
-
-    try:
-        parts.append(f"bPressedJump={c.bPressedJump!r}")
-    except Exception:
-        pass
-
-    return " ".join(parts)
 
 
 def _mapping_action(mapping) -> str:
@@ -166,90 +149,33 @@ def _mapping_action(mapping) -> str:
         return ""
 
 
-def _mapping_key(mapping) -> str:
-    try:
-        return str(mapping.Key.KeyName)
-    except Exception:
-        return ""
+def _find_move_rearm_mappings():
+    """Find Action_Move and Action_DashDirection mappings to neutralize briefly.
 
-
-def _mapping_modifiers(mapping) -> str:
-    try:
-        return repr(list(mapping.Modifiers))
-    except Exception:
-        try:
-            return repr(mapping.Modifiers)
-        except Exception:
-            return ""
-
-
-def _find_forward_rearm_mappings():
-    """
-    Find every Enhanced Input mapping that must be neutralized for one frame.
-
-    Keyboard path:
-      - discover the current Forward key from Action_Move by its modifier chain;
-      - include both Action_Move and Action_DashDirection for that key.
-
-    Gamepad path:
-      - discover 2D gamepad movement mappings (normally Gamepad_Left2D);
-      - include both Action_Move and Action_DashDirection for the same stick key.
-
-    Both paths are suppressed together. This avoids needing an input-device mode
-    switch and lets the same Super Dash key work with keyboard or controller.
+    We suppress the complete movement action pair for one animation frame. The
+    desired direction is captured first, then the physical mappings are restored
+    immediately after SetWantsToDash is re-armed. This works for remapped
+    keyboard controls and for the 2D gamepad movement action.
     """
     p = get_pc_safe()
     if p is None:
-        return [], [], []
+        return []
 
     try:
         mappings = list(p.PlayerInput.EnhancedActionMappings)
     except Exception:
-        return [], [], []
+        return []
 
-    keyboard_forward_keys = []
-    gamepad_move_keys = []
-
-    for mapping in mappings:
-        action = _mapping_action(mapping)
-        if "Action_Move.Action_Move" not in action:
-            continue
-
-        key = _mapping_key(mapping)
-        if not key or key == "None":
-            continue
-
-        mods = _mapping_modifiers(mapping)
-
-        if key.startswith("Gamepad_"):
-            # BL4 currently exposes movement as Gamepad_Left2D. Keep this generic
-            # enough to survive a future/right-stick or southpaw mapping variant.
-            if "2D" in key and key not in gamepad_move_keys:
-                gamepad_move_keys.append(key)
-            continue
-
-        # Keyboard Forward is the positive Y Action_Move mapping: SwizzleAxis,
-        # without Negate. This survives normal user remapping of W.
-        if "InputModifierSwizzleAxis" in mods and "InputModifierNegate" not in mods:
-            if key not in keyboard_forward_keys:
-                keyboard_forward_keys.append(key)
-
-    target_keys = set(keyboard_forward_keys + gamepad_move_keys)
     result = []
-
     for mapping in mappings:
-        key = _mapping_key(mapping)
-        if key not in target_keys:
-            continue
-
         action = _mapping_action(mapping)
         if (
             "Action_Move.Action_Move" in action
             or "Action_DashDirection.Action_DashDirection" in action
         ):
             result.append(mapping)
+    return result
 
-    return keyboard_forward_keys, gamepad_move_keys, result
 
 def _set_mapping_ignored(mapping, ignored: bool) -> bool:
     try:
@@ -259,21 +185,16 @@ def _set_mapping_ignored(mapping, ignored: bool) -> bool:
         return False
 
 
-def _suppress_forward_mappings() -> bool:
+def _suppress_move_mappings() -> bool:
     global _suppressed_mappings
 
     _suppressed_mappings = []
-
-    keyboard_keys, gamepad_keys, mappings = _find_forward_rearm_mappings()
+    mappings = _find_move_rearm_mappings()
     if not mappings:
-        log(
-            "FORWARD SUPPRESS ERROR: no keyboard/gamepad Forward mappings found "
-            f"keyboard={keyboard_keys!r} gamepad={gamepad_keys!r}"
-        )
+        log_error("MOVEMENT SUPPRESS ERROR: no Action_Move/Action_DashDirection mappings found")
         return False
 
     ok = True
-
     for mapping in mappings:
         try:
             original = bool(mapping.bShouldBeIgnored)
@@ -281,59 +202,23 @@ def _suppress_forward_mappings() -> bool:
             original = False
 
         _suppressed_mappings.append((mapping, original))
-
         if not _set_mapping_ignored(mapping, True):
             ok = False
 
-    states = []
-    for mapping, original in _suppressed_mappings:
-        try:
-            current = bool(mapping.bShouldBeIgnored)
-        except Exception:
-            current = None
+    if not ok:
+        log_error("MOVEMENT SUPPRESS WARNING: one or more mappings could not be suppressed")
+    return True
 
-        states.append(
-            f"{_mapping_action(mapping)} key={_mapping_key(mapping)} "
-            f"original={original} now={current}"
-        )
 
-    log(
-        "FORWARD SUPPRESSED "
-        f"keyboard={keyboard_keys!r} gamepad={gamepad_keys!r} "
-        f"count={len(_suppressed_mappings)} ok={ok} | "
-        + " || ".join(states)
-    )
-
-    return ok
-
-def _restore_forward_mappings() -> None:
+def _restore_move_mappings() -> None:
     global _suppressed_mappings
 
-    if not _suppressed_mappings:
-        return
-
-    states = []
-
     for mapping, original in _suppressed_mappings:
-        success = _set_mapping_ignored(mapping, original)
-
-        try:
-            current = bool(mapping.bShouldBeIgnored)
-        except Exception:
-            current = None
-
-        states.append(
-            f"{_mapping_action(mapping)} key={_mapping_key(mapping)} "
-            f"restore={original} now={current} ok={success}"
-        )
-
-    log("FORWARD RESTORED | " + " || ".join(states))
+        _set_mapping_ignored(mapping, original)
     _suppressed_mappings = []
 
 
 def _clear_pending_move_input(c) -> None:
-    # Best effort: clear already accumulated movement input so the one-frame
-    # logical Forward release reaches the movement layer immediately.
     try:
         c.ConsumeMovementInputVector()
     except Exception:
@@ -345,7 +230,6 @@ def _clear_pending_move_input(c) -> None:
         pass
 
 
-
 def _movement_mode_name(c) -> str:
     try:
         return repr(c.CharacterMovement.MovementMode)
@@ -353,30 +237,152 @@ def _movement_mode_name(c) -> str:
         return ""
 
 
-def _restore_sprint_intent(c) -> bool:
-    """
-    Re-assert sprint only when Super Dash started from an actual sprint.
+def _capture_desired_direction(c) -> tuple[float, float, int]:
+    """Capture the current world-space movement direction.
 
-    We deliberately do not force bIsSprinting.  Instead we restore the movement
-    component's normal sprint intent and let BL4 transition back into sprint.
+    Keyboard diagonals arrive as a combined movement vector. Gamepad movement
+    arrives as a continuous 2D vector, so arbitrary stick angles are preserved.
+    If the character is effectively stationary, legacy forward behavior is used.
     """
+    p = get_pc_safe()
+    yaw = 0.0
+    if p is not None:
+        try:
+            yaw = float(p.GetControlRotation().Yaw)
+        except Exception:
+            pass
+
+    yr = math.radians(yaw)
+    cam_fx, cam_fy = math.cos(yr), math.sin(yr)
+    cam_rx, cam_ry = -math.sin(yr), math.cos(yr)
+
+    vx = vy = 0.0
+    speed = 0.0
+    try:
+        vel = c.GetVelocity()
+        vx, vy = float(vel.X), float(vel.Y)
+        speed = math.hypot(vx, vy)
+    except Exception:
+        pass
+
+    ix = iy = 0.0
+    try:
+        iv = c.GetLastMovementInputVector()
+        ix, iy = float(iv.X), float(iv.Y)
+    except Exception:
+        pass
+
+    imag = math.hypot(ix, iy)
+
+    if speed > 5.0 and imag > 0.001:
+        dx, dy = ix / imag, iy / imag
+    elif speed > 5.0:
+        smag = math.hypot(vx, vy)
+        dx, dy = vx / smag, vy / smag
+    else:
+        dx, dy = cam_fx, cam_fy
+
+    local_f = dx * cam_fx + dy * cam_fy
+    local_r = dx * cam_rx + dy * cam_ry
+
+    # The native call only exposes four directions. Use the nearest cardinal
+    # native dash as the launch state, then rotate its horizontal velocity to
+    # the exact captured movement angle.
+    if abs(local_f) >= abs(local_r):
+        enum = DIR_FORWARD if local_f >= 0.0 else DIR_BACK
+    else:
+        enum = DIR_RIGHT if local_r >= 0.0 else DIR_LEFT
+
+    return dx, dy, enum
+
+
+def _horizontal_velocity(c):
+    try:
+        v = c.CharacterMovement.Velocity
+        return float(v.X), float(v.Y), float(v.Z)
+    except Exception:
+        try:
+            v = c.GetVelocity()
+            return float(v.X), float(v.Y), float(v.Z)
+        except Exception:
+            return None
+
+
+def _correct_horizontal_velocity(c, *, report_error: bool = False) -> bool:
+    """Rotate native dash X/Y to the captured angle while preserving Z.
+
+    Direct Velocity assignment is intentional. The earlier test implementation
+    used repeated AddImpulse calls; BL4 queued those impulses and could release
+    them later as a very large horizontal velocity spike. Direct assignment
+    avoids that accumulation and also avoids the view-direction snap seen in
+    the first directional prototype.
+    """
+    global _dash_speed
+
+    current = _horizontal_velocity(c)
+    if current is None:
+        if report_error:
+            log_error("DIRECTION ERROR: cannot read CharacterMovement.Velocity")
+        return False
+
+    cx, cy, cz = current
+    current_speed = math.hypot(cx, cy)
+    if _dash_speed <= 1.0:
+        _dash_speed = current_speed
+    if _dash_speed <= 1.0:
+        if report_error:
+            log_error(f"DIRECTION ERROR: invalid dash horizontal speed {_dash_speed:.3f}")
+        return False
+
+    tx = _desired_x * _dash_speed
+    ty = _desired_y * _dash_speed
+
+    try:
+        velocity = unrealsdk.make_struct(
+            "Vector",
+            X=float(tx),
+            Y=float(ty),
+            Z=float(cz),
+        )
+        c.CharacterMovement.Velocity = velocity
+    except Exception as exc:
+        if report_error:
+            log_error(f"DIRECTION ERROR: direct Velocity assignment failed: {exc!r}")
+        return False
+
+    if report_error:
+        after = _horizontal_velocity(c)
+        if after is None:
+            log_error("DIRECTION ERROR: cannot verify direct Velocity assignment")
+            return False
+        ax, ay, _az = after
+        if math.hypot(ax - tx, ay - ty) >= 2.0:
+            log_error(
+                "DIRECTION ERROR: direct Velocity assignment did not stick "
+                f"target=({tx:.3f},{ty:.3f}) after=({ax:.3f},{ay:.3f})"
+            )
+            return False
+
+    return True
+
+
+def _restore_sprint_intent(c) -> bool:
+    """Restore normal sprint intent only if Super Dash started from sprint."""
     try:
         m = c.CharacterMovement
     except Exception as exc:
-        log(f"SPRINT RESTORE ERROR movement={exc!r}")
+        log_error(f"SPRINT RESTORE ERROR movement={exc!r}")
         return False
 
     ok = True
-
     for name in ("bWantsToSprint", "bWantsToStartSprinting"):
         try:
             setattr(m, name, True)
         except Exception as exc:
             ok = False
-            log(f"SPRINT RESTORE {name} ERROR={exc!r}")
-
-    log(f"SPRINT INTENT RESTORED ok={ok} | {_snapshot(c)}")
+            log_error(f"SPRINT RESTORE {name} ERROR={exc!r}")
     return ok
+
 
 def _release_sequence_inputs() -> None:
     c = _c
@@ -388,11 +394,11 @@ def _release_sequence_inputs() -> None:
             pass
 
         try:
-            c.SetWantsToDash(False, FORWARD_DIRECTION)
+            c.SetWantsToDash(False, int(_native_direction))
         except Exception:
             pass
 
-    _restore_forward_mappings()
+    _restore_move_mappings()
 
 
 def _disable_hook() -> None:
@@ -405,14 +411,13 @@ def _disable_hook() -> None:
         _anim_hook.disable()
     except Exception:
         pass
-
     _anim_hook = None
 
 
 def _reset() -> None:
     global _phase, _c, _start_ns, _target_ns, _jump_press_ns
     global _initial_last_dash_time, _resume_sprint, _saw_airborne
-    global _landing_deadline_ns
+    global _landing_deadline_ns, _neutral_frame_count, _dash_speed
 
     _release_sequence_inputs()
 
@@ -425,6 +430,8 @@ def _reset() -> None:
     _resume_sprint = False
     _saw_airborne = False
     _landing_deadline_ns = 0
+    _neutral_frame_count = 0
+    _dash_speed = 0.0
     _disable_hook()
 
 
@@ -442,18 +449,14 @@ def _dash_has_started(c) -> bool:
         return False
 
 
-_neutral_frame_count = 0
-
-
 def _update(obj: Any, args: Any, ret: Any, func: Any) -> None:
     global _phase, _target_ns, _jump_press_ns, _neutral_frame_count
-    global _saw_airborne, _landing_deadline_ns
+    global _saw_airborne, _landing_deadline_ns, _dash_speed
 
     if _phase == IDLE:
         return
 
     c = _c
-
     if c is None or c != get_char():
         _reset()
         return
@@ -466,109 +469,90 @@ def _update(obj: Any, args: Any, ret: Any, func: Any) -> None:
 
     now = time.perf_counter_ns()
 
-    if _phase == NEUTRALIZE_FORWARD:
+    if _phase == NEUTRALIZE_MOVE:
         _neutral_frame_count += 1
         _clear_pending_move_input(c)
-
-        log(
-            f"NEUTRAL FRAME {_neutral_frame_count}/{int(neutral_frames.value)} "
-            f"| {_snapshot(c)}"
-        )
 
         if _neutral_frame_count < int(neutral_frames.value):
             return
 
-        # Set the dash request while Forward is still logically released,
-        # then restore Forward. On the next Enhanced Input processing pass,
-        # the physically-held key or analog stick is presented to the game again.
         try:
-            c.SetWantsToDash(True, FORWARD_DIRECTION)
+            c.SetWantsToDash(True, int(_native_direction))
         except Exception as exc:
-            log(f"SetWantsToDash(True, 0) ERROR: {exc!r}")
+            log_error(f"SetWantsToDash(True,{_native_direction}) ERROR: {exc!r}")
             _reset()
             return
 
-        _restore_forward_mappings()
-
+        _restore_move_mappings()
         _phase = WAIT_DASH_START
         _target_ns = now + int(dash_timeout_ms.value) * 1_000_000
-
-        log(f"FORWARD RE-ARMED; waiting for dash | {_snapshot(c)}")
         return
 
     if _phase == WAIT_DASH_START:
         if _dash_has_started(c):
-            log(
-                f"DASH START after={(now - _start_ns)/1_000_000:.3f}ms "
-                f"| {_snapshot(c)}"
-            )
+            v = _horizontal_velocity(c)
+            if v is not None:
+                _dash_speed = math.hypot(v[0], v[1])
+
+            if not _correct_horizontal_velocity(c, report_error=True):
+                _reset()
+                return
 
             try:
                 c.Jump()
             except Exception as exc:
-                log(f"Jump ERROR: {exc!r}")
+                log_error(f"Jump ERROR: {exc!r}")
                 _reset()
                 return
 
             _jump_press_ns = now
             _target_ns = now + int(jump_hold_ms.value) * 1_000_000
             _phase = HOLD_JUMP
-
-            log(f"JUMP DOWN | {_snapshot(c)}")
             return
 
         if now >= _target_ns:
-            log(
+            log_error(
                 f"ABORT dash timeout total={(now - _start_ns)/1_000_000:.3f}ms "
-                f"| {_snapshot(c)}"
+                f"direction={_native_direction}"
             )
             _reset()
-
         return
 
     if _phase == HOLD_JUMP:
+        # Keep the horizontal dash vector on the captured angle during the brief
+        # native dash window. Vertical velocity remains untouched.
+        _correct_horizontal_velocity(c)
+
         if now < _target_ns:
             return
 
         try:
             c.StopJumping()
         except Exception as exc:
-            log(f"StopJumping ERROR: {exc!r}")
-
-        log(
-            f"JUMP UP held={(now - _jump_press_ns)/1_000_000:.3f}ms "
-            f"| {_snapshot(c)}"
-        )
+            log_error(f"StopJumping ERROR: {exc!r}")
 
         _target_ns = now + int(release_delay_ms.value) * 1_000_000
         _phase = WAIT_RELEASE
         return
 
     if _phase == WAIT_RELEASE:
+        _correct_horizontal_velocity(c)
+
         if now < _target_ns:
             return
 
         try:
-            c.SetWantsToDash(False, FORWARD_DIRECTION)
+            c.SetWantsToDash(False, int(_native_direction))
         except Exception as exc:
-            log(f"Dash release ERROR: {exc!r}")
-
-        log(
-            f"DASH REQUEST UP total={(now - _start_ns)/1_000_000:.3f}ms "
-            f"| {_snapshot(c)}"
-        )
+            log_error(f"Dash release ERROR: {exc!r}")
 
         if _resume_sprint:
             mode = _movement_mode_name(c)
             _saw_airborne = "MOVE_Falling" in mode
             _landing_deadline_ns = now + 3_000_000_000
             _phase = WAIT_LANDING
-            log(
-                "SPRINT PRESERVE armed; waiting for landing "
-                f"saw_airborne={_saw_airborne} | {_snapshot(c)}"
-            )
         else:
-            _phase = FINAL_SNAPSHOT
+            _phase = FINISH
         return
 
     if _phase == WAIT_LANDING:
@@ -579,30 +563,23 @@ def _update(obj: Any, args: Any, ret: Any, func: Any) -> None:
             return
 
         if _saw_airborne and "MOVE_Walking" in mode:
-            log(f"LANDING DETECTED; restoring pre-dash sprint | {_snapshot(c)}")
             _restore_sprint_intent(c)
             _target_ns = now + 40_000_000
             _phase = VERIFY_SPRINT
             return
 
         if now >= _landing_deadline_ns:
-            log(f"SPRINT RESTORE TIMEOUT; no landing detected | {_snapshot(c)}")
-            _phase = FINAL_SNAPSHOT
+            log_error("SPRINT RESTORE TIMEOUT; no landing detected")
+            _phase = FINISH
         return
 
     if _phase == VERIFY_SPRINT:
         if now < _target_ns:
             return
-
-        log(f"SPRINT VERIFY | {_snapshot(c)}")
-        _phase = FINAL_SNAPSHOT
+        _phase = FINISH
         return
 
-    if _phase == FINAL_SNAPSHOT:
-        log(
-            f"DONE total={(now - _start_ns)/1_000_000:.3f}ms "
-            f"| {_snapshot(c)}"
-        )
+    if _phase == FINISH:
         _reset()
 
 
@@ -620,7 +597,7 @@ def _enable_hook() -> bool:
         )(_update)
         h.enable()
     except Exception as exc:
-        log(f"sequence hook ERROR: {exc!r}")
+        log_error(f"sequence hook ERROR: {exc!r}")
         return False
 
     _anim_hook = h
@@ -637,7 +614,8 @@ def _enable_hook() -> bool:
 def super_dash() -> None:
     global _phase, _c, _start_ns, _initial_last_dash_time
     global _neutral_frame_count, _resume_sprint, _saw_airborne
-    global _landing_deadline_ns
+    global _landing_deadline_ns, _desired_x, _desired_y, _native_direction
+    global _dash_speed
 
     if _phase != IDLE:
         return
@@ -654,8 +632,10 @@ def super_dash() -> None:
         _initial_last_dash_time = None
         _resume_sprint = False
 
+    _desired_x, _desired_y, _native_direction = _capture_desired_direction(c)
     _saw_airborne = False
     _landing_deadline_ns = 0
+    _dash_speed = 0.0
 
     if not _enable_hook():
         return
@@ -664,25 +644,17 @@ def super_dash() -> None:
     _start_ns = time.perf_counter_ns()
     _neutral_frame_count = 0
 
-    # Always perform the re-arm. It also works from standstill and avoids
-    # maintaining two subtly different input paths.
     try:
-        c.SetWantsToDash(False, FORWARD_DIRECTION)
+        c.SetWantsToDash(False, int(_native_direction))
     except Exception:
         pass
 
-    if not _suppress_forward_mappings():
+    if not _suppress_move_mappings():
         _reset()
         return
 
     _clear_pending_move_input(c)
-    _phase = NEUTRALIZE_FORWARD
-
-    log(
-        f"PRESS; internal Forward release/re-arm sequence "
-        f"| initial_LastDashTime={_initial_last_dash_time!r} "
-        f"resume_sprint={_resume_sprint} {_snapshot(c)}"
-    )
+    _phase = NEUTRALIZE_MOVE
 
 
 def on_disable() -> None:
@@ -691,12 +663,11 @@ def on_disable() -> None:
 
 try:
     LOG.write_text(
-        "BL4 Super Dash v1.1.1\n"
-        "One-key Super Dash with keyboard/gamepad support and sprint preservation.\n",
+        "BL4 Super Dash v1.2.0\n"
+        "Error log only; normal Super Dash activations are not logged.\n",
         encoding="utf-8",
     )
 except Exception:
     pass
 
-log("Loaded.")
 build_mod(on_disable=on_disable)

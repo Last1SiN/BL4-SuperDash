@@ -1,29 +1,22 @@
 # BL4 Super Dash
 
-**Borderlands 4 PythonSDK / Oak2 mod**
-
-Current release: **v1.1.1**
-
-> Installation-ready `.sdkmod` files are published under **Releases**.  
-> The files in this repository are the mod source.
-
----
-
-Perform Borderlands 4's Super Dash movement technique with a single rebindable key or controller button.
+Perform Borderlands 4's Super Dash movement technique with a single rebindable key or controller button, now in the direction you are currently moving.
 
 ## Features
 
 - One-key Super Dash.
-- Works from a standstill.
-- Works while already moving forward.
-- Works while already sprinting.
+- Directional Super Dash based on current movement.
+- Keyboard supports all 8 movement directions, including diagonals.
+- Gamepad preserves the continuous analog angle of the left stick rather than reducing it to 4/8 sectors.
+- From a standstill, Super Dash keeps the original forward behavior.
+- Works while walking or sprinting.
 - Preserves sprint after landing when Super Dash was started from a sprint.
-- Forward can remain physically held throughout the sequence.
+- Movement input can remain physically held throughout the sequence.
 - Supports keyboard/mouse and gamepad activation.
-- Automatically detects keyboard and gamepad movement mappings.
 - Uses Borderlands 4's native Dash and Jump movement calls.
 - No Windows SendInput or external macro software.
 - Adjustable timing options.
+- No normal per-activation console spam; the log is reserved for errors/abort diagnostics.
 
 ## Requirements
 
@@ -46,25 +39,44 @@ Perform Borderlands 4's Super Dash movement technique with a single rebindable k
 
 Do not extract `BL4_SuperDash.sdkmod`.
 
-Remove or disable older test builds before installing this release.
+Remove or disable older SuperDash test/probe builds before installing this release.
+
+## Directional behavior
+
+Version 1.2.0 captures the current movement vector at activation.
+
+- Keyboard cardinal movement stays cardinal.
+- Keyboard combinations such as W+D, S+D, S+A, and W+A produce diagonal Super Dash movement.
+- Gamepad movement uses the current analog stick angle continuously, including angles between the usual 8 directions.
+- Stick magnitude does not scale Super Dash power; only the movement angle is used.
+- If the character is effectively stationary, Super Dash is performed forward relative to the current view, preserving the original standstill behavior.
+
+Internally, BL4 exposes four native Dash directions. The mod starts the nearest native direction, then rotates only the horizontal dash velocity to the exact captured movement angle while preserving vertical velocity and the native dash speed.
 
 ## Configuration
 
 Default values are the tested release settings and normally do not need to be changed.
 
-- **Forward Neutral Frames:** 1
+- **Movement Neutral Frames:** 1
 - **Jump Hold (ms):** 25
 - **Jump Release -> Dash Release (ms):** 15
 - **Dash Start Timeout (ms):** 300
 
 ## Sprint preservation
 
-Version 1.1.1 preserves sprint state across Super Dash.
-
-If Super Dash is activated while the character is already sprinting, the mod remembers the actual sprint state, performs the normal Super Dash sequence, waits for landing, and restores the game's normal sprint intent.
+If Super Dash is activated while the character is already sprinting, the mod remembers the actual sprint state, performs the Super Dash sequence, waits for landing, and restores the game's normal sprint intent.
 
 If Super Dash is started from normal movement, sprint is not forced on.
 
+## Version 1.2.0
+
+- Added directional Super Dash using the current movement direction.
+- Added keyboard diagonal support.
+- Added continuous analog gamepad direction support.
+- Preserved forward fallback from a standstill.
+- Replaced the experimental queued-impulse direction correction with direct horizontal velocity rotation, preventing accumulated velocity spikes and the camera-direction snap seen in the first directional prototype.
+- Removed verbose per-activation debug/trace output from the SDK console; normal successful activations are not written to the mod log.
+- Kept the existing timing behavior and sprint preservation.
 
 ## Compatibility and license
 
@@ -73,5 +85,5 @@ If Super Dash is started from normal movement, sprint is not forced on.
 
 ## Credits
 
-Creator: Sol (ChatGPT, GPT-5.6 Sol)
+Creator: Sol (ChatGPT, GPT-5.6 Sol)  
 QA: Last1SiN
