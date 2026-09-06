@@ -20,24 +20,26 @@
 
 ## Требования
 
-- Borderlands 4
-- BL-SDK / Oak2 Mod Manager
-- Mods Base 1.12+
-- Keybinds 1.1+
-- Управление движением с клавиатуры или геймпада
+- Borderlands 4.
+- [BL4 PythonSDK / Oak2 Mod Manager v0.3+ — актуальный стабильный релиз](https://github.com/bl-sdk/oak2-mod-manager/releases/latest).
+- [Официальная инструкция по установке BL4 SDK](https://bl-sdk.github.io/oak2-mod-db/).
+
+Oak2 Mod Manager v0.3 уже включает необходимые **Mods Base 1.12**, **Console Mod Menu 1.6** и **Keybinds 1.1**. При использовании этого релиза или более новой совместимой версии Oak2 отдельно скачивать эти компоненты не нужно.
 
 ## Установка
 
-1. Скопируйте `BL4_SuperDash.sdkmod` в:
+1. **Полностью закройте Borderlands 4.**
+2. Если BL4 PythonSDK / Oak2 ещё не установлен или его нужно обновить, скачайте [актуальный стабильный релиз Oak2 Mod Manager](https://github.com/bl-sdk/oak2-mod-manager/releases/latest). Распакуйте содержимое релиза SDK непосредственно в **корневую папку Borderlands 4** — ту, где находится папка `OakGame` — с объединением папок и файлов. Полная процедура, включая примечания для Proton/Linux, находится в [официальной инструкции BL4 SDK](https://bl-sdk.github.io/oak2-mod-db/).
+3. После установки/обновления SDK один раз запустите Borderlands 4. Дважды нажмите `~`, чтобы открыть SDK-консоль, введите `mods` и убедитесь, что открывается Mod Menu.
+4. Скачайте актуальный **BL4 Super Dash** из [GitHub Releases](https://github.com/Last1SiN/BL4-SuperDash/releases/latest) или с [Nexus Mods](https://www.nexusmods.com/borderlands4/mods/289).
+5. Снова полностью закройте игру и скопируйте `BL4_SuperDash.sdkmod` **не распаковывая** в:
 
    `Borderlands 4\sdk_mods\`
 
-2. Запустите Borderlands 4.
-3. Откройте меню PythonSDK / Mods.
-4. Включите **BL4 Super Dash**.
-5. Назначьте **Super Dash** на нужную клавишу клавиатуры, кнопку мыши или кнопку геймпада.
+6. Запустите/перезапустите Borderlands 4. Дважды нажмите `~`, введите `mods`, откройте **BL4 Super Dash** и включите мод.
+7. В настройках мода назначьте **Super Dash** на нужную клавишу клавиатуры, кнопку мыши или кнопку геймпада.
 
-Не распаковывайте `BL4_SuperDash.sdkmod`.
+Для обновления BL4 Super Dash замените существующий `BL4_SuperDash.sdkmod` более новой версией файла и перезапустите игру.
 
 Перед установкой релиза удалите или отключите старые тестовые/probe-сборки SuperDash.
 
@@ -85,5 +87,6 @@
 
 ## Credits
 
-Creator: Sol (ChatGPT, GPT-5.6 Sol)  
-QA: Last1SiN
+- **Создатель мода / код:** Sol (ChatGPT, GPT-5.6 Sol)
+- **QA / сопровождение:** [Last1SiN](https://github.com/Last1SiN)
+- **BL4 PythonSDK / Oak2 Mod Manager:** создан [apple1417](https://github.com/apple1417) при участии проекта и контрибьюторов [BL-SDK](https://github.com/bl-sdk).
