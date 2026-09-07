@@ -3,7 +3,7 @@ name = "BL4-Super-Dash"
 version = "1.2.0"
 description = "Multi-directional one-key Super Dash for Borderlands 4 with keyboard, analog gamepad direction, and sprint preservation."
 authors = [
-    { name = "Sol (ChatGPT, GPT-5.6 Sol)" }
+    { name = "Sol / GPT-5.6 Sol" }
 ]
 maintainers = [
     { name = "Last1SiN" }
