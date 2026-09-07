@@ -87,6 +87,6 @@ If Super Dash is started from normal movement, sprint is not forced on.
 
 ## Credits
 
-- **Mod creator / code:** Sol (ChatGPT, GPT-5.6 Sol)
-- **QA / maintainer:** [Last1SiN](https://github.com/Last1SiN)
+- **Development:** Sol / GPT-5.6 Sol
+- **Design, testing & QA:** Last1SiN
 - **BL4 PythonSDK / Oak2 Mod Manager:** created by [apple1417](https://github.com/apple1417), with contributions from the [BL-SDK](https://github.com/bl-sdk) project and contributors.
