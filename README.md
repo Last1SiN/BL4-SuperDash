@@ -1,92 +1,72 @@
 # BL4 Super Dash
 
-Perform Borderlands 4's Super Dash movement technique with a single rebindable key or controller button, now in the direction you are currently moving.
+[English](README.md) | [Русский](README_RU.md)
+
+BL4 Super Dash performs Borderlands 4's Super Dash movement technique with a single rebindable keyboard key, mouse button or gamepad button, in the direction you are currently moving.
+
+The mod uses Borderlands 4's native Dash and Jump movement calls instead of external macro software.
 
 ## Features
 
-- One-key Super Dash.
-- Directional Super Dash based on current movement.
+- Super Dash with a single rebindable button.
+- Multi-directional Super Dash based on current movement.
 - Keyboard supports all 8 movement directions, including diagonals.
-- Gamepad preserves the continuous analog angle of the left stick rather than reducing it to 4/8 sectors.
-- From a standstill, Super Dash keeps the original forward behavior.
+- Gamepad preserves the continuous analog angle of the left stick instead of reducing movement to fixed sectors.
+- From a standstill, Super Dash falls back to forward relative to the current view.
 - Works while walking or sprinting.
-- Preserves sprint after landing when Super Dash was started from a sprint.
+- Preserves sprint after landing when Super Dash was started from sprint.
 - Movement input can remain physically held throughout the sequence.
-- Supports keyboard/mouse and gamepad activation.
-- Uses Borderlands 4's native Dash and Jump movement calls.
+- Uses Borderlands 4's native Dash and Jump calls.
 - No Windows SendInput or external macro software.
-- Adjustable timing options.
-- No normal per-activation console spam; the log is reserved for errors/abort diagnostics.
-
-## Requirements
-
-- Borderlands 4.
-- [BL4 PythonSDK / Oak2 Mod Manager v0.3+ — latest stable release](https://github.com/bl-sdk/oak2-mod-manager/releases/latest).
-- [Official BL4 SDK installation guide](https://bl-sdk.github.io/oak2-mod-db/).
-
-Oak2 Mod Manager v0.3 already bundles the required **Mods Base 1.12**, **Console Mod Menu 1.6**, and **Keybinds 1.1** components. They do not need to be downloaded separately when using that release or a newer compatible Oak2 release.
-
-## Installation
-
-1. **Fully close Borderlands 4.**
-2. If BL4 PythonSDK / Oak2 is not installed, or you want to update it, download the [latest stable Oak2 Mod Manager release](https://github.com/bl-sdk/oak2-mod-manager/releases/latest). Extract the SDK release directly into the **Borderlands 4 game folder** (the folder containing `OakGame`) and allow folders/files to merge. For the complete SDK procedure, including Proton/Linux notes, use the [official BL4 SDK installation guide](https://bl-sdk.github.io/oak2-mod-db/).
-3. Start Borderlands 4 once after installing/updating the SDK. Press `~` twice to open the SDK console, type `mods`, and verify that the Mod Menu opens.
-4. Download the latest **BL4 Super Dash** release from [GitHub Releases](https://github.com/Last1SiN/BL4-SuperDash/releases/latest) or [Nexus Mods](https://www.nexusmods.com/borderlands4/mods/289).
-5. Fully close the game again and copy `BL4_SuperDash.sdkmod` **without extracting it** to:
-
-   `Borderlands 4\sdk_mods\`
-
-6. Start/restart Borderlands 4. Press `~` twice, type `mods`, open **BL4 Super Dash**, and enable the mod.
-7. Bind **Super Dash** to the desired keyboard key, mouse button, or gamepad button in the mod settings.
-
-To update BL4 Super Dash, replace the existing `BL4_SuperDash.sdkmod` with the newer file and restart the game.
-
-Remove or disable older SuperDash test/probe builds before installing this release.
+- Normal successful activations do not spam the SDK console; the mod log is reserved for errors/abort diagnostics.
 
 ## Directional behavior
 
-Version 1.2.0 captures the current movement vector at activation.
+The mod captures the current movement direction when Super Dash is activated.
 
-- Keyboard cardinal movement stays cardinal.
-- Keyboard combinations such as W+D, S+D, S+A, and W+A produce diagonal Super Dash movement.
-- Gamepad movement uses the current analog stick angle continuously, including angles between the usual 8 directions.
-- Stick magnitude does not scale Super Dash power; only the movement angle is used.
-- If the character is effectively stationary, Super Dash is performed forward relative to the current view, preserving the original standstill behavior.
+Keyboard supports forward, backward, left, right and all four diagonals. Gamepad movement uses the current analog stick angle continuously, including angles between the usual eight directions. Stick magnitude does not scale Super Dash power; only the movement angle is used.
 
-Internally, BL4 exposes four native Dash directions. The mod starts the nearest native direction, then rotates only the horizontal dash velocity to the exact captured movement angle while preserving vertical velocity and the native dash speed.
+If the character is effectively stationary, Super Dash is performed forward relative to the current view.
+
+Internally, Borderlands 4 exposes four native Dash directions. BL4 Super Dash starts the nearest native direction and then rotates only the horizontal dash velocity to the captured movement angle, preserving vertical velocity and the native horizontal dash speed.
 
 ## Configuration
 
-Default values are the tested release settings and normally do not need to be changed.
+Default values are the tested release settings:
 
-- **Movement Neutral Frames:** 1
-- **Jump Hold (ms):** 25
-- **Jump Release -> Dash Release (ms):** 15
-- **Dash Start Timeout (ms):** 300
+- **Movement Neutral Frames:** `1`
+- **Jump Hold (ms):** `25`
+- **Jump Release -> Dash Release (ms):** `15`
+- **Dash Start Timeout (ms):** `300`
 
-## Sprint preservation
+The defaults normally do not need to be changed.
 
-If Super Dash is activated while the character is already sprinting, the mod remembers the actual sprint state, performs the Super Dash sequence, waits for landing, and restores the game's normal sprint intent.
+## Requirements
 
-If Super Dash is started from normal movement, sprint is not forced on.
+- Borderlands 4
+- [BL4 PythonSDK / Oak2 Mod Manager](https://github.com/bl-sdk/oak2-mod-manager/releases/latest)
 
-## Version 1.2.0
+Use the [official BL4 SDK / Oak2 installation guide](https://bl-sdk.github.io/oak2-mod-db/) for SDK installation and updates.
 
-- Added directional Super Dash using the current movement direction.
-- Added keyboard diagonal support.
-- Added continuous analog gamepad direction support.
-- Preserved forward fallback from a standstill.
-- Replaced the experimental queued-impulse direction correction with direct horizontal velocity rotation, preventing accumulated velocity spikes and the camera-direction snap seen in the first directional prototype.
-- Removed verbose per-activation debug/trace output from the SDK console; normal successful activations are not written to the mod log.
-- Kept the existing timing behavior and sprint preservation.
+## Installing the mod
+
+1. Install or update BL4 PythonSDK / Oak2 using the official guide above.
+2. Download `BL4_SuperDash.sdkmod` from [GitHub Releases](https://github.com/Last1SiN/BL4-SuperDash/releases/latest) or [Nexus Mods](https://www.nexusmods.com/borderlands4/mods/289).
+3. With Borderlands 4 closed, copy the `.sdkmod` file intact to `Borderlands 4\sdk_mods\`. Do not extract the `.sdkmod` itself.
+4. Remove old SuperDash test/probe builds if present.
+5. Start the game, open the Mods menu, enable **BL4 Super Dash** and bind **Super Dash** to the desired key or button.
+
+To update BL4 Super Dash, replace the existing `.sdkmod` with the newer file and restart the game.
 
 ## Compatibility and license
 
-- Co-op support: **Unknown** — client-without-host-mod behavior has not yet been validated.
+- Co-op support: **Unknown** — behavior with the mod installed only on a client while the host does not have it has not yet been validated.
+- The directional correction changes only horizontal dash direction while preserving native dash speed and vertical velocity.
 - License: **GPL-3.0**
 
 ## Credits
 
-- **Development:** Sol / GPT-5.6 Sol
-- **Design, testing & QA:** Last1SiN
-- **BL4 PythonSDK / Oak2 Mod Manager:** created by [apple1417](https://github.com/apple1417), with contributions from the [BL-SDK](https://github.com/bl-sdk) project and contributors.
+**Development:** Sol / GPT-5.6 Sol  
+**Design, testing & QA:** Last1SiN
+
+**BL4 PythonSDK / Oak2 Mod Manager:** created by [apple1417](https://github.com/apple1417), with contributions from the [BL-SDK](https://github.com/bl-sdk) project and contributors.
