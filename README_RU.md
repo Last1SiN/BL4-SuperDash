@@ -87,6 +87,6 @@ Oak2 Mod Manager v0.3 уже включает необходимые **Mods Base
 
 ## Credits
 
-- **Создатель мода / код:** Sol (ChatGPT, GPT-5.6 Sol)
-- **QA / сопровождение:** [Last1SiN](https://github.com/Last1SiN)
+- **Development:** Sol / GPT-5.6 Sol
+- **Design, testing & QA:** Last1SiN
 - **BL4 PythonSDK / Oak2 Mod Manager:** создан [apple1417](https://github.com/apple1417) при участии проекта и контрибьюторов [BL-SDK](https://github.com/bl-sdk).
