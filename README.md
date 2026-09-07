@@ -82,7 +82,7 @@ If Super Dash is started from normal movement, sprint is not forced on.
 
 ## Compatibility and license
 
-- Co-op support: **ClientSide** — tested with BL4 Super Dash installed only on the local player while the other co-op players did not have the mod installed.
+- Co-op support: **Unknown** — client-without-host-mod behavior has not yet been validated.
 - License: **GPL-3.0**
 
 ## Credits
