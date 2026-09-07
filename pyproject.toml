@@ -17,4 +17,4 @@ name = "BL4 Super Dash"
 version = "1.2.0"
 license = { name = "GPL3", url = "https://choosealicense.com/licenses/gpl-3.0/" }
 download = "https://github.com/Last1SiN/BL4-SuperDash/releases/latest/download/BL4_SuperDash.sdkmod"
-coop_support = "ClientSide"
+coop_support = "Unknown"
