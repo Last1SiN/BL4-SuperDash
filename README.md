@@ -62,7 +62,7 @@ To update BL4 Super Dash, replace the existing `.sdkmod` with the newer file and
 
 - Co-op support: **Unknown** — behavior with the mod installed only on a client while the host does not have it has not yet been validated.
 - The directional correction changes only horizontal dash direction while preserving native dash speed and vertical velocity.
-- License: **GPL-3.0**
+- License: **GNU GPLv3 with [Section 7 additional provenance terms](ADDITIONAL_TERMS.md)**
 
 ## Credits
 
