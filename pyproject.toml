@@ -11,10 +11,11 @@ maintainers = [
 
 [project.urls]
 Repository = "https://github.com/Last1SiN/BL4-SuperDash"
+AdditionalTerms = "https://github.com/Last1SiN/BL4-SuperDash/blob/main/ADDITIONAL_TERMS.md"
 
 [tool.sdkmod]
 name = "BL4 Super Dash"
 version = "1.2.0"
-license = { name = "GPL3", url = "https://choosealicense.com/licenses/gpl-3.0/" }
+license = { name = "GPL3 + Section 7 terms", url = "https://github.com/Last1SiN/BL4-SuperDash/blob/main/ADDITIONAL_TERMS.md" }
 download = "https://github.com/Last1SiN/BL4-SuperDash/releases/latest/download/BL4_SuperDash.sdkmod"
 coop_support = "Unknown"
