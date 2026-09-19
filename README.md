@@ -3,6 +3,7 @@
 [English](README.md) | [Русский](README_RU.md)
 
 BL4 Super Dash performs Borderlands 4's Super Dash movement technique with a single rebindable keyboard key, mouse button or gamepad button, in the direction you are currently moving.
+It also provides an optional separate Dash bind for grounded dashing in the current movement direction, including forward and diagonal dashing while running or sprinting.
 
 The mod uses Borderlands 4's native Dash and Jump movement calls instead of external macro software.
 
