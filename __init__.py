@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import math
 import time
+from enum import IntEnum
 from typing import Any
 
 import unrealsdk
@@ -16,26 +17,29 @@ from mods_base import (
 )
 from unrealsdk.hooks import Type
 
-VERSION = "1.2.1"
+VERSION = "1.2.2"
 LOG = MODS_DIR / "BL4_SuperDash.log"
 
-IDLE = 0
-NEUTRALIZE_MOVE = 1
-WAIT_DASH_START = 2
-HOLD_JUMP = 3
-WAIT_RELEASE = 4
-WAIT_LANDING = 5
-SPRINT_SETTLE = 6
-FINISH = 7
-DASH_ACTIVE = 8
-DIAGONAL_DASH_ACTIVE = 10
+class Phase(IntEnum):
+    IDLE = 0
+    NEUTRALIZE_MOVE = 1
+    WAIT_DASH_START = 2
+    HOLD_JUMP = 3
+    WAIT_RELEASE = 4
+    WAIT_LANDING = 5
+    SPRINT_SETTLE = 6
+    FINISH = 7
+    DASH_ACTIVE = 8
+    DIAGONAL_DASH_ACTIVE = 10
 
-SEQUENCE_NONE = 0
-SEQUENCE_SUPER_DASH = 1
-SEQUENCE_DASH = 2
 
-_phase = IDLE
-_sequence_kind = SEQUENCE_NONE
+class SequenceKind(IntEnum):
+    NONE = 0
+    SUPER_DASH = 1
+    DASH = 2
+
+_phase = Phase.IDLE
+_sequence_kind = SequenceKind.NONE
 _c = None
 _start_ns = 0
 _target_ns = 0
@@ -46,14 +50,11 @@ _saw_airborne = False
 _landing_deadline_ns = 0
 _neutral_frame_count = 0
 _dash_min_end_ns = 0
-_hold_move_suppression = False
 _diagonal_emulation = False
 _diagonal_start_ns = 0
 _diagonal_duration_s = 0.33
 _diagonal_base_speed = 2500.0
 _diagonal_curve = ()
-_local_forward = 0.0
-_local_right = 0.0
 _pre_request_speed = 0.0
 _forward_gate_neutral = False
 
@@ -354,7 +355,7 @@ def _set_horizontal_velocity(c, speed: float, *, report_error: bool = False) -> 
 
 def _correct_super_dash_velocity(c, *, report_error: bool = False) -> bool:
     """Rotate Super Dash X/Y while preserving its initial horizontal speed."""
-    global _dash_speed, _hold_move_suppression
+    global _dash_speed
     global _diagonal_emulation, _diagonal_start_ns
     global _diagonal_duration_s, _diagonal_base_speed, _diagonal_curve
 
@@ -531,13 +532,13 @@ def _reset() -> None:
     global _dash_speed, _hold_move_suppression
     global _diagonal_emulation, _diagonal_start_ns
     global _diagonal_duration_s, _diagonal_base_speed, _diagonal_curve
-    global _local_forward, _local_right, _pre_request_speed
+    global _pre_request_speed
     global _forward_gate_neutral
 
     _release_sequence_inputs()
 
-    _phase = IDLE
-    _sequence_kind = SEQUENCE_NONE
+    _phase = Phase.IDLE
+    _sequence_kind = SequenceKind.NONE
     _c = None
     _start_ns = 0
     _target_ns = 0
@@ -548,14 +549,11 @@ def _reset() -> None:
     _neutral_frame_count = 0
     _dash_min_end_ns = 0
     _dash_speed = 0.0
-    _hold_move_suppression = False
     _diagonal_emulation = False
     _diagonal_start_ns = 0
     _diagonal_duration_s = 0.33
     _diagonal_base_speed = 2500.0
     _diagonal_curve = ()
-    _local_forward = 0.0
-    _local_right = 0.0
     _pre_request_speed = 0.0
     _forward_gate_neutral = False
     _disable_hook()
@@ -578,7 +576,7 @@ def _update_impl(obj: Any, args: Any, ret: Any, func: Any) -> None:
     global _diagonal_start_ns, _diagonal_duration_s
     global _diagonal_base_speed, _diagonal_curve
 
-    if _phase == IDLE:
+    if _phase == Phase.IDLE:
         return
 
     c = _c
@@ -600,10 +598,10 @@ def _update_impl(obj: Any, args: Any, ret: Any, func: Any) -> None:
         _reset()
         return
 
-    if _phase == NEUTRALIZE_MOVE:
+    if _phase == Phase.NEUTRALIZE_MOVE:
         _neutral_frame_count += 1
 
-        if _sequence_kind == SEQUENCE_SUPER_DASH:
+        if _sequence_kind == SequenceKind.SUPER_DASH:
             _clear_pending_move_input(c)
             if _neutral_frame_count < int(neutral_frames.value):
                 return
@@ -628,7 +626,7 @@ def _update_impl(obj: Any, args: Any, ret: Any, func: Any) -> None:
             _reset()
             return
 
-        if _sequence_kind == SEQUENCE_SUPER_DASH:
+        if _sequence_kind == SequenceKind.SUPER_DASH:
             _restore_move_mappings()
             _target_ns = now + int(dash_timeout_ms.value) * 1_000_000
         else:
@@ -637,19 +635,19 @@ def _update_impl(obj: Any, args: Any, ret: Any, func: Any) -> None:
             # can turn it into a delayed Dash.
             _target_ns = now + GROUND_DASH_ACCEPT_NS
 
-        _phase = WAIT_DASH_START
+        _phase = Phase.WAIT_DASH_START
         return
 
-    if _phase == WAIT_DASH_START:
+    if _phase == Phase.WAIT_DASH_START:
         if (
-            _sequence_kind == SEQUENCE_DASH
+            _sequence_kind == SequenceKind.DASH
             and _forward_gate_neutral
             and _pre_request_speed > 1.0
         ):
             _set_horizontal_velocity(c, _pre_request_speed)
 
         if _dash_has_started(c):
-            if _sequence_kind == SEQUENCE_DASH:
+            if _sequence_kind == SequenceKind.DASH:
                 if not _suppressed_mappings:
                     if not _suppress_move_mappings():
                         _reset()
@@ -677,7 +675,7 @@ def _update_impl(obj: Any, args: Any, ret: Any, func: Any) -> None:
                         _reset()
                         return
 
-                    _phase = DIAGONAL_DASH_ACTIVE
+                    _phase = Phase.DIAGONAL_DASH_ACTIVE
                     return
 
                 if not _correct_dash_velocity(c, report_error=True):
@@ -686,7 +684,7 @@ def _update_impl(obj: Any, args: Any, ret: Any, func: Any) -> None:
 
                 _dash_min_end_ns = now + 50_000_000
                 _target_ns = now + 750_000_000
-                _phase = DASH_ACTIVE
+                _phase = Phase.DASH_ACTIVE
                 return
 
             current = _horizontal_velocity(c)
@@ -705,10 +703,10 @@ def _update_impl(obj: Any, args: Any, ret: Any, func: Any) -> None:
                 return
 
             _target_ns = now + int(jump_hold_ms.value) * 1_000_000
-            _phase = HOLD_JUMP
+            _phase = Phase.HOLD_JUMP
             return
 
-        if _sequence_kind == SEQUENCE_DASH:
+        if _sequence_kind == SequenceKind.DASH:
             if now < _target_ns:
                 return
 
@@ -727,7 +725,7 @@ def _update_impl(obj: Any, args: Any, ret: Any, func: Any) -> None:
             _reset()
         return
 
-    if _phase == DIAGONAL_DASH_ACTIVE:
+    if _phase == Phase.DIAGONAL_DASH_ACTIVE:
         elapsed_s = (now - _diagonal_start_ns) / 1_000_000_000.0
 
         if elapsed_s < _diagonal_duration_s:
@@ -744,12 +742,12 @@ def _update_impl(obj: Any, args: Any, ret: Any, func: Any) -> None:
         if _resume_sprint:
             _restore_sprint_intent(c)
             _target_ns = now + 40_000_000
-            _phase = SPRINT_SETTLE
+            _phase = Phase.SPRINT_SETTLE
         else:
-            _phase = FINISH
+            _phase = Phase.FINISH
         return
 
-    if _phase == DASH_ACTIVE:
+    if _phase == Phase.DASH_ACTIVE:
         if _is_character_dashing(c):
             _correct_dash_velocity(c)
             if now >= _target_ns:
@@ -771,12 +769,12 @@ def _update_impl(obj: Any, args: Any, ret: Any, func: Any) -> None:
         if _resume_sprint:
             _restore_sprint_intent(c)
             _target_ns = now + 40_000_000
-            _phase = SPRINT_SETTLE
+            _phase = Phase.SPRINT_SETTLE
         else:
-            _phase = FINISH
+            _phase = Phase.FINISH
         return
 
-    if _phase == HOLD_JUMP:
+    if _phase == Phase.HOLD_JUMP:
         _correct_super_dash_velocity(c)
 
         if now < _target_ns:
@@ -788,10 +786,10 @@ def _update_impl(obj: Any, args: Any, ret: Any, func: Any) -> None:
             log_error(f"StopJumping ERROR: {exc!r}")
 
         _target_ns = now + int(release_delay_ms.value) * 1_000_000
-        _phase = WAIT_RELEASE
+        _phase = Phase.WAIT_RELEASE
         return
 
-    if _phase == WAIT_RELEASE:
+    if _phase == Phase.WAIT_RELEASE:
         _correct_super_dash_velocity(c)
 
         if now < _target_ns:
@@ -806,12 +804,12 @@ def _update_impl(obj: Any, args: Any, ret: Any, func: Any) -> None:
             mode = _movement_mode_name(c)
             _saw_airborne = "MOVE_Falling" in mode
             _landing_deadline_ns = now + 3_000_000_000
-            _phase = WAIT_LANDING
+            _phase = Phase.WAIT_LANDING
         else:
-            _phase = FINISH
+            _phase = Phase.FINISH
         return
 
-    if _phase == WAIT_LANDING:
+    if _phase == Phase.WAIT_LANDING:
         mode = _movement_mode_name(c)
 
         if "MOVE_Falling" in mode:
@@ -821,20 +819,20 @@ def _update_impl(obj: Any, args: Any, ret: Any, func: Any) -> None:
         if _saw_airborne and "MOVE_Walking" in mode:
             _restore_sprint_intent(c)
             _target_ns = now + 40_000_000
-            _phase = SPRINT_SETTLE
+            _phase = Phase.SPRINT_SETTLE
             return
 
         if now >= _landing_deadline_ns:
             log_error("SPRINT RESTORE TIMEOUT: no landing detected")
-            _phase = FINISH
+            _phase = Phase.FINISH
         return
 
-    if _phase == SPRINT_SETTLE:
+    if _phase == Phase.SPRINT_SETTLE:
         if now >= _target_ns:
-            _phase = FINISH
+            _phase = Phase.FINISH
         return
 
-    if _phase == FINISH:
+    if _phase == Phase.FINISH:
         _reset()
 
 
@@ -882,11 +880,11 @@ def _enable_hook() -> bool:
     return True
 
 
-def _begin_sequence(c, sequence_kind: int, captured) -> bool:
+def _begin_sequence(c, sequence_kind: SequenceKind, captured) -> bool:
     global _phase, _sequence_kind, _c, _start_ns, _initial_last_dash_time
     global _neutral_frame_count, _resume_sprint, _saw_airborne
     global _landing_deadline_ns, _desired_x, _desired_y, _native_direction
-    global _dash_speed, _dash_min_end_ns, _hold_move_suppression
+    global _dash_speed, _dash_min_end_ns
     global _diagonal_emulation, _diagonal_start_ns
     global _diagonal_duration_s, _diagonal_base_speed, _diagonal_curve
     global _local_forward, _local_right, _pre_request_speed
@@ -902,23 +900,22 @@ def _begin_sequence(c, sequence_kind: int, captured) -> bool:
 
     _desired_x, _desired_y, _native_direction = captured[:3]
     _sequence_kind = sequence_kind
-    _local_forward = float(captured[3]) if len(captured) >= 5 else 0.0
-    _local_right = float(captured[4]) if len(captured) >= 5 else 0.0
+    local_forward = float(captured[3]) if len(captured) >= 5 else 0.0
+    local_right = float(captured[4]) if len(captured) >= 5 else 0.0
 
     current = _horizontal_velocity(c)
     _pre_request_speed = (
         math.hypot(current[0], current[1]) if current is not None else 0.0
     )
 
-    _hold_move_suppression = sequence_kind == SEQUENCE_DASH
     _forward_gate_neutral = (
-        sequence_kind == SEQUENCE_DASH and _local_forward > 0.0
+        sequence_kind == SequenceKind.DASH and local_forward > 0.0
     )
     _diagonal_emulation = (
-        sequence_kind == SEQUENCE_DASH
+        sequence_kind == SequenceKind.DASH
         and len(captured) >= 5
-        and abs(float(captured[3])) >= 0.20
-        and abs(float(captured[4])) >= 0.20
+        and abs(local_forward) >= 0.20
+        and abs(local_right) >= 0.20
     )
     _diagonal_start_ns = 0
     _diagonal_duration_s = 0.33
@@ -930,7 +927,7 @@ def _begin_sequence(c, sequence_kind: int, captured) -> bool:
     _dash_min_end_ns = 0
 
     if not _enable_hook():
-        _sequence_kind = SEQUENCE_NONE
+        _sequence_kind = SequenceKind.NONE
         return False
 
     _c = c
@@ -942,13 +939,13 @@ def _begin_sequence(c, sequence_kind: int, captured) -> bool:
     except Exception:
         pass
 
-    if sequence_kind == SEQUENCE_SUPER_DASH:
+    if sequence_kind == SequenceKind.SUPER_DASH:
         if not _suppress_move_mappings():
             _reset()
             return False
         _clear_pending_move_input(c)
 
-    _phase = NEUTRALIZE_MOVE
+    _phase = Phase.NEUTRALIZE_MOVE
     return True
 
 
@@ -961,7 +958,7 @@ def _begin_sequence(c, sequence_kind: int, captured) -> bool:
     event_filter=EInputEvent.IE_Pressed,
 )
 def super_dash() -> None:
-    if _phase != IDLE:
+    if _phase != Phase.IDLE:
         return
 
     c = get_char()
@@ -970,7 +967,7 @@ def super_dash() -> None:
 
     captured = _capture_direction(c, allow_standstill=True)
     if captured is not None:
-        _begin_sequence(c, SEQUENCE_SUPER_DASH, captured)
+        _begin_sequence(c, SequenceKind.SUPER_DASH, captured)
 
 
 @keybind(
@@ -986,7 +983,7 @@ def super_dash() -> None:
     event_filter=EInputEvent.IE_Pressed,
 )
 def dash() -> None:
-    if _phase != IDLE:
+    if _phase != Phase.IDLE:
         return
 
     c = get_char()
@@ -1010,7 +1007,7 @@ def dash() -> None:
                 native = DIR_FORWARD
 
         captured = (dx, dy, native, local_forward, local_right)
-        _begin_sequence(c, SEQUENCE_DASH, captured)
+        _begin_sequence(c, SequenceKind.DASH, captured)
 
 
 def on_disable() -> None:
