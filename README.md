@@ -2,24 +2,24 @@
 
 [English](README.md) | [Русский](README_RU.md)
 
-BL4 Super Dash performs Borderlands 4's Super Dash movement technique with a single rebindable keyboard key, mouse button or gamepad button, in the direction you are currently moving.
-It also provides an optional separate Dash bind for grounded dashing in the current movement direction, including forward and diagonal dashing while running or sprinting.
+BL4 Super Dash turns the Super Dash technique into a single button press.
 
-The mod uses Borderlands 4's native Dash and Jump movement calls instead of external macro software.
+Hit your bind and the mod performs the sequence in the direction you are already moving. Keyboard supports all eight directions, while gamepad keeps the actual stick angle instead of snapping it to fixed sectors.
+
+There is also an optional regular Dash bind for quick forward or diagonal ground dashes. Everything runs through Borderlands 4 itself — no external macro software or simulated keyboard input.
 
 ## Features
 
-- Super Dash with a single rebindable button.
-- Multi-directional Super Dash based on current movement.
-- Keyboard supports all 8 movement directions, including diagonals.
-- Gamepad preserves the continuous analog angle of the left stick instead of reducing movement to fixed sectors.
-- From a standstill, Super Dash falls back to forward relative to the current view.
-- Works while walking or sprinting.
-- Preserves sprint after landing when Super Dash was started from sprint.
-- Movement input can remain physically held throughout the sequence.
-- Uses Borderlands 4's native Dash and Jump calls.
-- No Windows SendInput or external macro software.
-- Normal successful activations do not spam the SDK console; the mod log is reserved for errors/abort diagnostics.
+- One-button Super Dash.
+- Dashes in the direction you are already moving.
+- Full eight-direction keyboard support, including diagonals.
+- Gamepad uses the real left-stick angle.
+- Falls back to a forward Super Dash when standing still.
+- Works from normal movement or sprint.
+- Restores sprint after landing when appropriate.
+- You do not need to release your movement input during the sequence.
+- Optional separate bind for a regular directional Dash.
+- Uses the game's own Dash and Jump actions — no external macro tool.
 
 ## Directional behavior
 
