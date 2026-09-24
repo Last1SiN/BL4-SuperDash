@@ -356,8 +356,6 @@ def _set_horizontal_velocity(c, speed: float, *, report_error: bool = False) -> 
 def _correct_super_dash_velocity(c, *, report_error: bool = False) -> bool:
     """Rotate Super Dash X/Y while preserving its initial horizontal speed."""
     global _dash_speed
-    global _diagonal_emulation, _diagonal_start_ns
-    global _diagonal_duration_s, _diagonal_base_speed, _diagonal_curve
 
     current = _horizontal_velocity(c)
     if current is None:
@@ -529,7 +527,7 @@ def _reset() -> None:
     global _phase, _sequence_kind, _c, _start_ns, _target_ns
     global _initial_last_dash_time, _resume_sprint, _saw_airborne
     global _landing_deadline_ns, _neutral_frame_count, _dash_min_end_ns
-    global _dash_speed, _hold_move_suppression
+    global _dash_speed
     global _diagonal_emulation, _diagonal_start_ns
     global _diagonal_duration_s, _diagonal_base_speed, _diagonal_curve
     global _pre_request_speed
@@ -738,7 +736,6 @@ def _update_impl(obj: Any, args: Any, ret: Any, func: Any) -> None:
         _apply_emulated_diagonal_velocity(c, now)
         _restore_move_mappings()
 
-
         if _resume_sprint:
             _restore_sprint_intent(c)
             _target_ns = now + 40_000_000
@@ -887,7 +884,7 @@ def _begin_sequence(c, sequence_kind: SequenceKind, captured) -> bool:
     global _dash_speed, _dash_min_end_ns
     global _diagonal_emulation, _diagonal_start_ns
     global _diagonal_duration_s, _diagonal_base_speed, _diagonal_curve
-    global _local_forward, _local_right, _pre_request_speed
+    global _pre_request_speed
     global _forward_gate_neutral
 
     try:
