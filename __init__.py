@@ -46,6 +46,7 @@ _target_ns = 0
 _initial_last_dash_time = None
 _anim_hook = None
 _resume_sprint = False
+_sprint_intent_before = None
 _saw_airborne = False
 _landing_deadline_ns = 0
 _neutral_frame_count = 0
@@ -478,6 +479,16 @@ def _is_character_dashing(c) -> bool:
 
 
 def _restore_sprint_intent(c) -> bool:
+    """Restore the sprint intent captured before the sequence.
+
+    Do not manufacture a new sprint request here. This keeps SuperDash from
+    overriding other movement mods which may legitimately change how sprinting
+    is allowed or resumed.
+    """
+    intent = _sprint_intent_before
+    if intent is None:
+        return True
+
     try:
         movement = c.CharacterMovement
     except Exception as exc:
@@ -485,9 +496,12 @@ def _restore_sprint_intent(c) -> bool:
         return False
 
     ok = True
-    for name in ("bWantsToSprint", "bWantsToStartSprinting"):
+    for name, value in zip(
+        ("bWantsToSprint", "bWantsToStartSprinting"),
+        intent,
+    ):
         try:
-            setattr(movement, name, True)
+            setattr(movement, name, value)
         except Exception as exc:
             ok = False
             log_error(f"SPRINT RESTORE {name} ERROR={exc!r}")
@@ -525,7 +539,8 @@ def _disable_hook() -> None:
 
 def _reset() -> None:
     global _phase, _sequence_kind, _c, _start_ns, _target_ns
-    global _initial_last_dash_time, _resume_sprint, _saw_airborne
+    global _initial_last_dash_time, _resume_sprint, _sprint_intent_before
+    global _saw_airborne
     global _landing_deadline_ns, _neutral_frame_count, _dash_min_end_ns
     global _dash_speed
     global _diagonal_emulation, _diagonal_start_ns
@@ -542,6 +557,7 @@ def _reset() -> None:
     _target_ns = 0
     _initial_last_dash_time = None
     _resume_sprint = False
+    _sprint_intent_before = None
     _saw_airborne = False
     _landing_deadline_ns = 0
     _neutral_frame_count = 0
@@ -879,7 +895,8 @@ def _enable_hook() -> bool:
 
 def _begin_sequence(c, sequence_kind: SequenceKind, captured) -> bool:
     global _phase, _sequence_kind, _c, _start_ns, _initial_last_dash_time
-    global _neutral_frame_count, _resume_sprint, _saw_airborne
+    global _neutral_frame_count, _resume_sprint, _sprint_intent_before
+    global _saw_airborne
     global _landing_deadline_ns, _desired_x, _desired_y, _native_direction
     global _dash_speed, _dash_min_end_ns
     global _diagonal_emulation, _diagonal_start_ns
@@ -891,9 +908,14 @@ def _begin_sequence(c, sequence_kind: SequenceKind, captured) -> bool:
         movement = c.CharacterMovement
         _initial_last_dash_time = movement.LastDashTime
         _resume_sprint = bool(movement.bIsSprinting)
+        _sprint_intent_before = (
+            bool(movement.bWantsToSprint),
+            bool(movement.bWantsToStartSprinting),
+        )
     except Exception:
         _initial_last_dash_time = None
         _resume_sprint = False
+        _sprint_intent_before = None
 
     _desired_x, _desired_y, _native_direction = captured[:3]
     _sequence_kind = sequence_kind
