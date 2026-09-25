@@ -17,7 +17,7 @@ from mods_base import (
 )
 from unrealsdk.hooks import Type
 
-VERSION = "1.2.2"
+VERSION = "1.2.3"
 LOG = MODS_DIR / "BL4_SuperDash.log"
 
 class Phase(IntEnum):
@@ -46,6 +46,7 @@ _target_ns = 0
 _initial_last_dash_time = None
 _anim_hook = None
 _resume_sprint = False
+_sprint_intent_before = None
 _saw_airborne = False
 _landing_deadline_ns = 0
 _neutral_frame_count = 0
@@ -56,7 +57,7 @@ _diagonal_duration_s = 0.33
 _diagonal_base_speed = 2500.0
 _diagonal_curve = ()
 _pre_request_speed = 0.0
-_forward_gate_neutral = False
+_dash_request_neutral = False
 
 # (mapping WrappedStruct, original bShouldBeIgnored)
 _suppressed_mappings = []
@@ -73,6 +74,17 @@ DIR_BACK = 2
 DIR_RIGHT = 3
 
 GROUND_DASH_ACCEPT_NS = 45_000_000
+SEQUENCE_FAILSAFE_NS = 2_000_000_000
+SEQUENCE_FAILSAFE_PHASES = frozenset(
+    (
+        Phase.NEUTRALIZE_MOVE,
+        Phase.WAIT_DASH_START,
+        Phase.HOLD_JUMP,
+        Phase.WAIT_RELEASE,
+        Phase.DASH_ACTIVE,
+        Phase.DIAGONAL_DASH_ACTIVE,
+    )
+)
 
 
 def log_error(msg: str) -> None:
@@ -478,6 +490,16 @@ def _is_character_dashing(c) -> bool:
 
 
 def _restore_sprint_intent(c) -> bool:
+    """Restore the sprint intent captured before the sequence.
+
+    Do not manufacture a new sprint request here. This keeps SuperDash from
+    overriding other movement mods which may legitimately change how sprinting
+    is allowed or resumed.
+    """
+    intent = _sprint_intent_before
+    if intent is None:
+        return True
+
     try:
         movement = c.CharacterMovement
     except Exception as exc:
@@ -485,9 +507,12 @@ def _restore_sprint_intent(c) -> bool:
         return False
 
     ok = True
-    for name in ("bWantsToSprint", "bWantsToStartSprinting"):
+    for name, value in zip(
+        ("bWantsToSprint", "bWantsToStartSprinting"),
+        intent,
+    ):
         try:
-            setattr(movement, name, True)
+            setattr(movement, name, value)
         except Exception as exc:
             ok = False
             log_error(f"SPRINT RESTORE {name} ERROR={exc!r}")
@@ -525,13 +550,14 @@ def _disable_hook() -> None:
 
 def _reset() -> None:
     global _phase, _sequence_kind, _c, _start_ns, _target_ns
-    global _initial_last_dash_time, _resume_sprint, _saw_airborne
+    global _initial_last_dash_time, _resume_sprint, _sprint_intent_before
+    global _saw_airborne
     global _landing_deadline_ns, _neutral_frame_count, _dash_min_end_ns
     global _dash_speed
     global _diagonal_emulation, _diagonal_start_ns
     global _diagonal_duration_s, _diagonal_base_speed, _diagonal_curve
     global _pre_request_speed
-    global _forward_gate_neutral
+    global _dash_request_neutral
 
     _release_sequence_inputs()
 
@@ -542,6 +568,7 @@ def _reset() -> None:
     _target_ns = 0
     _initial_last_dash_time = None
     _resume_sprint = False
+    _sprint_intent_before = None
     _saw_airborne = False
     _landing_deadline_ns = 0
     _neutral_frame_count = 0
@@ -553,7 +580,7 @@ def _reset() -> None:
     _diagonal_base_speed = 2500.0
     _diagonal_curve = ()
     _pre_request_speed = 0.0
-    _forward_gate_neutral = False
+    _dash_request_neutral = False
     _disable_hook()
 
 
@@ -590,9 +617,20 @@ def _update_impl(obj: Any, args: Any, ret: Any, func: Any) -> None:
 
     now = time.perf_counter_ns()
 
-    # No sequence is allowed to hold movement suppression indefinitely.
-    if _start_ns and now - _start_ns > 2_000_000_000:
-        log_error("SEQUENCE FAILSAFE: exceeded 2000 ms; restoring input")
+    # Only phases which still actively control Dash/Jump/input use the global
+    # failsafe. WAIT_LANDING has its own deadline and must be allowed to wait
+    # for a legitimate long fall without being mistaken for a stuck sequence.
+    if (
+        _phase in SEQUENCE_FAILSAFE_PHASES
+        and _start_ns
+        and now - _start_ns > SEQUENCE_FAILSAFE_NS
+    ):
+        elapsed_ms = (now - _start_ns) / 1_000_000
+        log_error(
+            "SEQUENCE FAILSAFE: "
+            f"phase={_phase.name} kind={_sequence_kind.name} "
+            f"elapsed={elapsed_ms:.3f}ms; restoring input"
+        )
         _reset()
         return
 
@@ -603,10 +641,13 @@ def _update_impl(obj: Any, args: Any, ret: Any, func: Any) -> None:
             _clear_pending_move_input(c)
             if _neutral_frame_count < int(neutral_frames.value):
                 return
-        elif _forward_gate_neutral:
-            # Forward movement must be internally neutralized while the native
-            # Dash request is accepted. Preserve the pre-request horizontal
-            # speed so an unavailable Dash does not stop the player.
+        elif _dash_request_neutral:
+            # A held movement direction can affect whether the native Dash
+            # request is accepted (notably while Omni Sprint permits lateral
+            # sprinting). Capture direction first, then briefly neutralize
+            # movement while asking the game for that exact Dash direction.
+            # Preserve pre-request horizontal speed so an unavailable Dash
+            # does not stop the player.
             if not _suppressed_mappings:
                 if not _suppress_move_mappings():
                     _reset()
@@ -639,7 +680,7 @@ def _update_impl(obj: Any, args: Any, ret: Any, func: Any) -> None:
     if _phase == Phase.WAIT_DASH_START:
         if (
             _sequence_kind == SequenceKind.DASH
-            and _forward_gate_neutral
+            and _dash_request_neutral
             and _pre_request_speed > 1.0
         ):
             _set_horizontal_velocity(c, _pre_request_speed)
@@ -879,21 +920,27 @@ def _enable_hook() -> bool:
 
 def _begin_sequence(c, sequence_kind: SequenceKind, captured) -> bool:
     global _phase, _sequence_kind, _c, _start_ns, _initial_last_dash_time
-    global _neutral_frame_count, _resume_sprint, _saw_airborne
+    global _neutral_frame_count, _resume_sprint, _sprint_intent_before
+    global _saw_airborne
     global _landing_deadline_ns, _desired_x, _desired_y, _native_direction
     global _dash_speed, _dash_min_end_ns
     global _diagonal_emulation, _diagonal_start_ns
     global _diagonal_duration_s, _diagonal_base_speed, _diagonal_curve
     global _pre_request_speed
-    global _forward_gate_neutral
+    global _dash_request_neutral
 
     try:
         movement = c.CharacterMovement
         _initial_last_dash_time = movement.LastDashTime
         _resume_sprint = bool(movement.bIsSprinting)
+        _sprint_intent_before = (
+            bool(movement.bWantsToSprint),
+            bool(movement.bWantsToStartSprinting),
+        )
     except Exception:
         _initial_last_dash_time = None
         _resume_sprint = False
+        _sprint_intent_before = None
 
     _desired_x, _desired_y, _native_direction = captured[:3]
     _sequence_kind = sequence_kind
@@ -905,9 +952,7 @@ def _begin_sequence(c, sequence_kind: SequenceKind, captured) -> bool:
         math.hypot(current[0], current[1]) if current is not None else 0.0
     )
 
-    _forward_gate_neutral = (
-        sequence_kind == SequenceKind.DASH and local_forward > 0.0
-    )
+    _dash_request_neutral = sequence_kind == SequenceKind.DASH
     _diagonal_emulation = (
         sequence_kind == SequenceKind.DASH
         and len(captured) >= 5
