@@ -1,0 +1,106 @@
+name: Temporary v1.2.3 lifecycle candidate
+
+on:
+  push:
+    branches:
+      - compat-omni-sprint-v1.2.3
+
+jobs:
+  package:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate lifecycle fix and package
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+          import ast, hashlib, tomllib, zipfile
+
+          source = Path("__init__.py")
+          text = source.read_text(encoding="utf-8")
+          tree = ast.parse(text, filename=str(source))
+          compile(text, str(source), "exec")
+
+          assert 'VERSION = "1.2.3"' in text
+          assert "SEQUENCE_FAILSAFE_NS = 2_000_000_000" in text
+          assert "SEQUENCE_FAILSAFE_PHASES = frozenset" in text
+          assert "Phase.NEUTRALIZE_MOVE" in text
+          assert "Phase.WAIT_DASH_START" in text
+          assert "Phase.HOLD_JUMP" in text
+          assert "Phase.WAIT_RELEASE" in text
+          assert "Phase.DASH_ACTIVE" in text
+          assert "Phase.DIAGONAL_DASH_ACTIVE" in text
+          assert "_phase in SEQUENCE_FAILSAFE_PHASES" in text
+          assert "_landing_deadline_ns = now + 3_000_000_000" in text
+          assert 'phase={_phase.name} kind={_sequence_kind.name}' in text
+          assert 'SEQUENCE FAILSAFE: exceeded 2000 ms' not in text
+
+          # Mechanically inspect the failsafe-phase declaration and prove that
+          # WAIT_LANDING / SPRINT_SETTLE / FINISH are not members.
+          assign = next(
+              node for node in tree.body
+              if isinstance(node, ast.Assign)
+              and any(isinstance(t, ast.Name) and t.id == "SEQUENCE_FAILSAFE_PHASES" for t in node.targets)
+          )
+          call = assign.value
+          tup = call.args[0]
+          names = {
+              elt.attr
+              for elt in tup.elts
+              if isinstance(elt, ast.Attribute)
+              and isinstance(elt.value, ast.Name)
+              and elt.value.id == "Phase"
+          }
+          assert names == {
+              "NEUTRALIZE_MOVE",
+              "WAIT_DASH_START",
+              "HOLD_JUMP",
+              "WAIT_RELEASE",
+              "DASH_ACTIVE",
+              "DIAGONAL_DASH_ACTIVE",
+          }
+          assert not {"WAIT_LANDING", "SPRINT_SETTLE", "FINISH"} & names
+
+          # Retain the already validated Omni Sprint compatibility fixes.
+          assert "_sprint_intent_before = (" in text
+          assert 'setattr(movement, name, True)' not in text
+          assert "_dash_request_neutral = sequence_kind == SequenceKind.DASH" in text
+          assert "_forward_gate_neutral" not in text
+
+          meta = tomllib.loads(Path("pyproject.toml").read_text(encoding="utf-8"))
+          assert meta["project"]["version"] == meta["tool"]["sdkmod"]["version"] == "1.2.3"
+          assert tuple(int(x) for x in meta["project"]["version"].split(".")) == (1, 2, 3)
+
+          stage = Path("stage/BL4_SuperDash")
+          stage.mkdir(parents=True, exist_ok=True)
+          for name in ("__init__.py","pyproject.toml","README.md","README_RU.md","LICENSE","ADDITIONAL_TERMS.md"):
+              (stage / name).write_bytes(Path(name).read_bytes())
+
+          archive = Path("dist/BL4_SuperDash.sdkmod")
+          archive.parent.mkdir(exist_ok=True)
+          with zipfile.ZipFile(archive, "w", compression=zipfile.ZIP_DEFLATED) as zf:
+              for path in sorted(stage.rglob("*")):
+                  if path.is_file():
+                      zf.write(path, path.relative_to(stage.parent).as_posix())
+
+          with zipfile.ZipFile(archive) as zf:
+              names=[n for n in zf.namelist() if n and not n.endswith("/")]
+              assert archive.stem=="BL4_SuperDash"
+              assert {n.split("/",1)[0] for n in names}=={"BL4_SuperDash"}
+              assert len(names)==6
+              assert "BL4_SuperDash/__init__.py" in names
+              assert not any("__pycache__" in n or n.endswith((".pyc",".pyo")) for n in names)
+
+          print("source_sha256", hashlib.sha256(source.read_bytes()).hexdigest())
+          print("artifact_sha256", hashlib.sha256(archive.read_bytes()).hexdigest())
+          print("ALL_GATES_PASS")
+          PY
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: BL4-SuperDash-v1.2.3-lifecycle-candidate
+          path: dist/BL4_SuperDash.sdkmod
+          if-no-files-found: error
