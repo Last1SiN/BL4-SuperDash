@@ -17,7 +17,7 @@ from mods_base import (
 )
 from unrealsdk.hooks import Type
 
-VERSION = "1.2.2"
+VERSION = "1.2.3"
 LOG = MODS_DIR / "BL4_SuperDash.log"
 
 class Phase(IntEnum):
