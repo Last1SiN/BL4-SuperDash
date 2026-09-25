@@ -74,6 +74,17 @@ DIR_BACK = 2
 DIR_RIGHT = 3
 
 GROUND_DASH_ACCEPT_NS = 45_000_000
+SEQUENCE_FAILSAFE_NS = 2_000_000_000
+SEQUENCE_FAILSAFE_PHASES = frozenset(
+    (
+        Phase.NEUTRALIZE_MOVE,
+        Phase.WAIT_DASH_START,
+        Phase.HOLD_JUMP,
+        Phase.WAIT_RELEASE,
+        Phase.DASH_ACTIVE,
+        Phase.DIAGONAL_DASH_ACTIVE,
+    )
+)
 
 
 def log_error(msg: str) -> None:
@@ -606,9 +617,20 @@ def _update_impl(obj: Any, args: Any, ret: Any, func: Any) -> None:
 
     now = time.perf_counter_ns()
 
-    # No sequence is allowed to hold movement suppression indefinitely.
-    if _start_ns and now - _start_ns > 2_000_000_000:
-        log_error("SEQUENCE FAILSAFE: exceeded 2000 ms; restoring input")
+    # Only phases which still actively control Dash/Jump/input use the global
+    # failsafe. WAIT_LANDING has its own deadline and must be allowed to wait
+    # for a legitimate long fall without being mistaken for a stuck sequence.
+    if (
+        _phase in SEQUENCE_FAILSAFE_PHASES
+        and _start_ns
+        and now - _start_ns > SEQUENCE_FAILSAFE_NS
+    ):
+        elapsed_ms = (now - _start_ns) / 1_000_000
+        log_error(
+            "SEQUENCE FAILSAFE: "
+            f"phase={_phase.name} kind={_sequence_kind.name} "
+            f"elapsed={elapsed_ms:.3f}ms; restoring input"
+        )
         _reset()
         return
 
