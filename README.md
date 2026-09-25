@@ -54,8 +54,7 @@ Use the [official BL4 SDK / Oak2 installation guide](https://bl-sdk.github.io/oa
 1. Install or update BL4 PythonSDK / Oak2 using the official guide above.
 2. Download `BL4_SuperDash.sdkmod` from [GitHub Releases](https://github.com/Last1SiN/BL4-SuperDash/releases/latest) or [Nexus Mods](https://www.nexusmods.com/borderlands4/mods/289).
 3. With Borderlands 4 closed, copy the `.sdkmod` file intact to `Borderlands 4\sdk_mods\`. Do not extract the `.sdkmod` itself.
-4. Remove old SuperDash test/probe builds if present.
-5. Start the game, open the Mods menu, enable **BL4 Super Dash** and bind **Super Dash** to the desired key or button.
+4. Start the game, open the Mods menu, enable **BL4 Super Dash** and bind **Super Dash** to the desired key or button.
 
 To update BL4 Super Dash, replace the existing `.sdkmod` with the newer file and restart the game.
 
