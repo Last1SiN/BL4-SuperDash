@@ -57,7 +57,7 @@ _diagonal_duration_s = 0.33
 _diagonal_base_speed = 2500.0
 _diagonal_curve = ()
 _pre_request_speed = 0.0
-_forward_gate_neutral = False
+_dash_request_neutral = False
 
 # (mapping WrappedStruct, original bShouldBeIgnored)
 _suppressed_mappings = []
@@ -546,7 +546,7 @@ def _reset() -> None:
     global _diagonal_emulation, _diagonal_start_ns
     global _diagonal_duration_s, _diagonal_base_speed, _diagonal_curve
     global _pre_request_speed
-    global _forward_gate_neutral
+    global _dash_request_neutral
 
     _release_sequence_inputs()
 
@@ -569,7 +569,7 @@ def _reset() -> None:
     _diagonal_base_speed = 2500.0
     _diagonal_curve = ()
     _pre_request_speed = 0.0
-    _forward_gate_neutral = False
+    _dash_request_neutral = False
     _disable_hook()
 
 
@@ -619,10 +619,13 @@ def _update_impl(obj: Any, args: Any, ret: Any, func: Any) -> None:
             _clear_pending_move_input(c)
             if _neutral_frame_count < int(neutral_frames.value):
                 return
-        elif _forward_gate_neutral:
-            # Forward movement must be internally neutralized while the native
-            # Dash request is accepted. Preserve the pre-request horizontal
-            # speed so an unavailable Dash does not stop the player.
+        elif _dash_request_neutral:
+            # A held movement direction can affect whether the native Dash
+            # request is accepted (notably while Omni Sprint permits lateral
+            # sprinting). Capture direction first, then briefly neutralize
+            # movement while asking the game for that exact Dash direction.
+            # Preserve pre-request horizontal speed so an unavailable Dash
+            # does not stop the player.
             if not _suppressed_mappings:
                 if not _suppress_move_mappings():
                     _reset()
@@ -655,7 +658,7 @@ def _update_impl(obj: Any, args: Any, ret: Any, func: Any) -> None:
     if _phase == Phase.WAIT_DASH_START:
         if (
             _sequence_kind == SequenceKind.DASH
-            and _forward_gate_neutral
+            and _dash_request_neutral
             and _pre_request_speed > 1.0
         ):
             _set_horizontal_velocity(c, _pre_request_speed)
@@ -902,7 +905,7 @@ def _begin_sequence(c, sequence_kind: SequenceKind, captured) -> bool:
     global _diagonal_emulation, _diagonal_start_ns
     global _diagonal_duration_s, _diagonal_base_speed, _diagonal_curve
     global _pre_request_speed
-    global _forward_gate_neutral
+    global _dash_request_neutral
 
     try:
         movement = c.CharacterMovement
@@ -927,9 +930,7 @@ def _begin_sequence(c, sequence_kind: SequenceKind, captured) -> bool:
         math.hypot(current[0], current[1]) if current is not None else 0.0
     )
 
-    _forward_gate_neutral = (
-        sequence_kind == SequenceKind.DASH and local_forward > 0.0
-    )
+    _dash_request_neutral = sequence_kind == SequenceKind.DASH
     _diagonal_emulation = (
         sequence_kind == SequenceKind.DASH
         and len(captured) >= 5
